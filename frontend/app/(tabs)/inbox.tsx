@@ -15,8 +15,7 @@ import Animated, { FadeInDown } from "react-native-reanimated";
 import { useData } from "@/src/context/DataContext";
 import CategoryDot from "@/src/components/CategoryDot";
 import { InboxRow } from "@/src/api/client";
-import { colors, font, spacing } from "@/src/theme";
-
+import { colors, font, formatTanggal, spacing } from "@/src/theme";
 export default function InboxScreen() {
   const insets = useSafeAreaInsets();
   const { inbox, loading, error, refresh } = useData();
@@ -37,7 +36,7 @@ export default function InboxScreen() {
               <Text style={styles.company} numberOfLines={1}>
                 {item.nama_perusahaan}
               </Text>
-              <Text style={styles.date}>{item.tanggal}</Text>
+              <Text style={styles.date}>{formatTanggal(item.tanggal)}</Text>
             </View>
             <Text style={styles.subject} numberOfLines={1}>
               {item.subjek}

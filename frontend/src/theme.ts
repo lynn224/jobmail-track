@@ -1,4 +1,6 @@
 // Central design tokens for JobMail Tracker — brutalist monochrome (zinc).
+import dayjs from "dayjs";
+
 export const colors = {
   surface: "#FFFFFF",
   surfaceSecondary: "#FAFAFA",
@@ -71,4 +73,14 @@ export function categoryColor(kategori?: string) {
   if (k.includes("tes") || k.includes("seleksi")) return colors.dot.tes;
   if (k.includes("tolak")) return colors.dot.ditolak;
   return colors.dot.lainnya;
+}
+
+// Formats an ISO datetime (from real GAS) to "DD MMM YYYY"; leaves other strings as-is.
+export function formatTanggal(s?: string) {
+  if (!s) return "";
+  if (/^\d{4}-\d{2}-\d{2}/.test(s)) {
+    const d = dayjs(s);
+    if (d.isValid()) return d.format("DD MMM YYYY");
+  }
+  return s;
 }

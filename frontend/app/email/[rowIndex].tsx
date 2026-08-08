@@ -17,7 +17,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useData } from "@/src/context/DataContext";
 import { useToast } from "@/src/components/Toast";
 import CategoryDot from "@/src/components/CategoryDot";
-import { colors, font, radius, spacing } from "@/src/theme";
+import { colors, font, formatTanggal, radius, spacing } from "@/src/theme";
 
 export default function EmailDetail() {
   const insets = useSafeAreaInsets();
@@ -81,7 +81,7 @@ export default function EmailDetail() {
           {email.nama_perusahaan}
         </Text>
         <Text style={styles.sender}>{email.pengirim}</Text>
-        <Text style={styles.date}>{email.tanggal}</Text>
+        <Text style={styles.date}>{formatTanggal(email.tanggal)}</Text>
 
         <View style={styles.divider} />
 
