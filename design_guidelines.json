@@ -1,0 +1,144 @@
+{
+  "app_name": "JobMail Tracker",
+  "personality": "5 Brutalist Mobile",
+  "personality_one_liner": "An ultra-minimalist, monochrome task-oriented utility that strips away visual noise to focus strictly on job application velocity and tracking.",
+  "color": {
+    "surface": "#FFFFFF",
+    "onSurface": "#18181B",
+    "surfaceSecondary": "#FAFAFA",
+    "onSurfaceSecondary": "#18181B",
+    "surfaceTertiary": "#F4F4F5",
+    "onSurfaceTertiary": "#71717A",
+    "surfaceInverse": "#18181B",
+    "onSurfaceInverse": "#FFFFFF",
+    "brand": "#18181B",
+    "brandPrimary": "#18181B",
+    "onBrandPrimary": "#FFFFFF",
+    "brandSecondary": "#E4E4E7",
+    "onBrandSecondary": "#18181B",
+    "brandTertiary": "#F4F4F5",
+    "onBrandTertiary": "#18181B",
+    "success": "#DCFCE7",
+    "onSuccess": "#15803D",
+    "warning": "#FEF9C3",
+    "onWarning": "#A16207",
+    "error": "#FEE2E2",
+    "onError": "#B91C1C",
+    "info": "#DBEAFE",
+    "onInfo": "#1D4ED8",
+    "border": "#E4E4E7",
+    "borderStrong": "#18181B",
+    "divider": "#F4F4F5",
+    "statusBadgeEmpty": "#F4F4F5",
+    "onStatusBadgeEmpty": "#71717A",
+    "dotUndangan": "#2563EB",
+    "dotPenawaran": "#22C55E",
+    "dotTes": "#9333EA",
+    "dotDitolak": "#EF4444",
+    "dotLainnya": "#71717A"
+  },
+  "typography": {
+    "displayFontFamily": "Geist",
+    "textFontFamily": "Geist",
+    "scale": {
+      "sm": 11,
+      "base": 12,
+      "lg": 14,
+      "xl": 18,
+      "2xl": 20
+    }
+  },
+  "spacing": {
+    "rule": "Generous spacing around list items. No extra containers. Padding aligns strictly to the grid.",
+    "xs": 4,
+    "sm": 8,
+    "md": 12,
+    "lg": 16,
+    "xl": 24,
+    "2xl": 32,
+    "3xl": 48
+  },
+  "radius_tokens": {
+    "sm": 0,
+    "md": 6,
+    "lg": 12,
+    "pill": 999
+  },
+  "shadow_tier": 0,
+  "navigation": "bottom_tabs",
+  "icon_set": "Phosphor",
+  "glassmorphism": {
+    "enabled": false,
+    "do's": [],
+    "dont's": ["Never use blur, brutalist personality mandates solid monochrome surfaces."]
+  },
+  "platform_libraries": {
+    "glass": {
+      "ios": "expo-glass-effect",
+      "android": "expo-blur",
+      "low_end_android_fallback": "solid surfaceSecondary"
+    },
+    "image": "expo-image",
+    "blur": "expo-blur",
+    "bottom_sheet": "@gorhom/bottom-sheet",
+    "animation": "react-native-reanimated",
+    "gesture": "react-native-gesture-handler"
+  },
+  "screens": [
+    {
+      "name": "Home (Log Pengiriman)",
+      "purpose": "A task-oriented list of job applications sent.",
+      "states": {
+        "loading": "Monochrome skeleton list rows.",
+        "empty": "Subtle wireframe illustration of a mailbox + 'Belum ada lamaran dikirim'.",
+        "error": "Text 'Gagal memuat data' + Retry action outline button."
+      },
+      "layout": "App Bar: Left aligned title 'Lamaran' 20pt bold, right aligned Sync icon. Main content: vertical list of cards. Card Layout: Flex row. Left column flex:1 contains Position (14pt Bold), Company (12pt), Email (11pt Gray), and a status badge beneath. Right column: Large circular checkbox. Divider between rows. Bottom-right: Black circular FAB with '+' icon."
+    },
+    {
+      "name": "Form Tambah Lamaran (Bottom Sheet)",
+      "purpose": "Quick entry form for new applications.",
+      "states": {
+        "loading": "Spinner overlaid on form.",
+        "empty": "N/A",
+        "error": "Inline text underneath fields in error color."
+      },
+      "layout": "No top header, simple drag handle. Fields stacked vertically with thin bottom border (underlined) and no bounding box. Focus state turns border black (#18181B). PDF selection: horizontal scroll of pill chips, drag-to-reorder if possible. Bottom action: sticky capsule button 'Simpan Ke Sheet' in black."
+    },
+    {
+      "name": "Referensi Berkas",
+      "purpose": "Repository of PDF resume and portfolio attachments.",
+      "states": {
+        "loading": "Spinner centered.",
+        "empty": "No PDFs synced message.",
+        "error": "Error syncing with Drive."
+      },
+      "layout": "Header 'Gudang Referensi Berkas' and subheader. List of files separated by thin 1px dividers. At the bottom, a 'Synchronize Drive' outline button with an inline spinner state."
+    },
+    {
+      "name": "Inbox HRD",
+      "purpose": "Track incoming responses with fast visual categorization.",
+      "states": {
+        "loading": "Skeleton text blocks.",
+        "empty": "Inbox empty message.",
+        "error": "Fetch error."
+      },
+      "layout": "List layout: Each row features a colored category dot on the left. Company (bold), subject, date. On tap -> Detail View: Company header (18pt bold), sender (gray), full subject. A standout green highlight box (bg: success, text: onSuccess) extracts key info like interview time. A 'Buka di Gmail' outline button below. Sticky bottom container with text input and send arrow for follow-ups."
+    }
+  ],
+  "images": {
+    "empty_home": {
+      "url": "https://images.unsplash.com/photo-1512314889357-e157c22f938d?q=80&w=2671&auto=format&fit=crop",
+      "dark": "https://images.unsplash.com/photo-1512314889357-e157c22f938d?q=80&w=2671&auto=format&fit=crop",
+      "alt": "Minimalist envelope on a desk"
+    }
+  },
+  "instructions_to_main_agent": [
+    "Strictly adhere to the black/white/zinc palette + dictated status colors. No purple/blue default accents. Selection color is Black (#18181B).",
+    "Tab bar is monochrome: selected item is black (#18181B), unselected is gray (#71717A).",
+    "For the Home screen 'circular checkbox', use a custom pressable with radius `pill` and 1px border. When checked, fill with black and white checkmark.",
+    "Form inputs must use a single bottom border (`borderBottomWidth: 1`) and no other borders or background container. Focus state changes border color to `borderStrong`.",
+    "Badges use a very light background with medium-dark text for contrast (e.g., Terkirim = bg #DCFCE7, text #15803D).",
+    "In the HRD Inbox detail view, implement the sticky bottom input using KeyboardAvoidingView with fixed padding, so it stays directly above the keyboard."
+  ]
+}
