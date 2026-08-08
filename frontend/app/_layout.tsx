@@ -2,13 +2,18 @@ import { Stack } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import { useEffect } from "react";
 import { LogBox } from "react-native";
+import { GestureHandlerRootView } from "react-native-gesture-handler";
+import { SafeAreaProvider } from "react-native-safe-area-context";
+import { BottomSheetModalProvider } from "@gorhom/bottom-sheet";
 
 import { useIconFonts } from "@/src/hooks/use-icon-fonts";
-
+import { DataProvider } from "@/src/context/DataContext";
+import { ToastProvider } from "@/src/components/Toast";
+import NotificationManager from "@/src/notifications";
 
 // Disable logbox errors etc so that users can see the app
 // and agent works as expected.
-LogBox.ignoreAllLogs(true)
+LogBox.ignoreAllLogs(true);
 
 // Keep the native splash visible from cold start until icon fonts register.
 // Required because @expo/vector-icons' componentDidMount fallback fires
@@ -29,5 +34,26 @@ export default function RootLayout() {
   // the app — icons will tofu, but the app still boots.
   if (!loaded && !error) return null;
 
-  return <Stack screenOptions={{ headerShown: false }} />;
+  return (
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <SafeAreaProvider>
+        <DataProvider>
+          <BottomSheetModalProvider>
+            <ToastProvider>
+              <NotificationManager />
+              <Stack screenOptions={{ headerShown: false }}>
+                <Stack.Screen name="index" />
+                <Stack.Screen name="setup" />
+                <Stack.Screen name="(tabs)" />
+                <Stack.Screen
+                  name="email/[rowIndex]"
+                  options={{ presentation: "card", animation: "slide_from_right" }}
+                />
+              </Stack>
+            </ToastProvider>
+          </BottomSheetModalProvider>
+        </DataProvider>
+      </SafeAreaProvider>
+    </GestureHandlerRootView>
+  );
 }
