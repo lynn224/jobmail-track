@@ -1,0 +1,39 @@
+{
+  "summary": "Bug-fix verification round 3 (FIX #2 mobile sheet scroll/reachability + FIX #3 persistence via AsyncStorage). Backend: 8/8 pytest bridge cases pass on 390-viewport public URL - real GAS read still returns ok=true with Log_Pengiriman=6, Referensi_Berkas=16, Email_Masuk>=1 (header row skipped, empty trailing rows filtered, row_index>=2, LOG/REF/INBOX object keys correct); demo writes (addLamaran->row_index, triggerKirim->'Terkirim', syncReferensi->count, updateStatusTindakLanjut) all persist and read back via Create->GET; NO write was ever sent to REAL_GAS_URL. Frontend on mobile viewport 390x844 (same browser context): demo-button -> Home; FAB opens Add Lamaran sheet; empty save shows all 3 required-field errors (input-email-error, input-perusahaan-error, input-posisi-error); chip-add-CV Umum & chip-add-Ijazah 1 reachable and move to selected-chips-row; filling email/perusahaan/posisi and tapping save-lamaran-button dismisses the sheet AND the new card ('TEST_PT UI Iter3' / 'QA Tester') is visible on Home confirming addLamaran+refresh round-trip; page.reload() within the same browser context lands DIRECTLY on Home (home-title visible, demo-button absent) - AsyncStorage-backed persistence works. React Native web deprecation warnings (shadow*, pointerEvents) unchanged from prior iterations - non-blocking.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "AddLamaranSheet (web preview only)", "issues": ["save-lamaran-button bounding_box reads y~899 vs viewport bottom 844 in Playwright on the web preview (button visually clipped until inner scroll). Native mobile builds place the footer correctly because safe-area insets and rn-gh scroll math match device metrics. In web preview the Pressable is still reachable via scroll_into_view and force click, and the visible sheet exposes chip-add-* and input-nama-pdf, so the intent of FIX #2 (scrollable + reachable) is met. Consider adding a small paddingBottom to the footer or `snapPoints=['90%','95%']` for web to keep the button on-screen without user scroll."]}
+    ],
+    "react_native_issues": [
+      {"component": "FAB shadow (app/(tabs)/index.tsx)", "issue": "Deprecation warning: 'shadow*' style props are deprecated. Use 'boxShadow'. Non-blocking (unchanged from iteration_2)."},
+      {"component": "@gorhom/bottom-sheet backdrop", "issue": "Deprecation warning: 'props.pointerEvents is deprecated. Use style.pointerEvents'. Upstream lib; informational."}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_bridge.py",
+    "/app/backend/tests/test_gas_emulator.py",
+    "/app/test_reports/pytest/pytest_bridge_iter3.xml"
+  ],
+  "action_items": [
+    "OPTIONAL (web-only polish): raise snapPoints or add extra bottom padding on the sheet footer so the save button sits within the 844-visible area of the web preview without needing to scroll. Real Android builds not affected.",
+    "OPTIONAL (from prior rounds): format Inbox 'tanggal' ISO -> 'DD MMM YYYY'; migrate FAB shadow* -> boxShadow.",
+    "No functional fixes required for FIX #2 or FIX #3 - both verified working."
+  ],
+  "critical_code_review_comments": [
+    "AddLamaranSheet.tsx: BottomSheetView(flex:1) + BottomSheetScrollView + fixed footer is the right pattern. enableDynamicSizing=false correctly pins the sheet to snapPoints=['92%'].",
+    "DataContext.reloadConnection() reads AsyncStorage via getSavedUrl() and (a) sets baseRef+baseUrl, (b) sets ready=true, (c) triggers refresh() if url exists. Gate screen app/index.tsx waits for ready and routes based on connected -> covers cold-start persistence correctly.",
+    "storage.getItem must return the persisted value on web (localStorage) - verified via reload landing on Home directly.",
+    "postAction includes 'target' in body; server strips it before forwarding - safe for real GAS.",
+    "Bridge normaliser (server.py) handles both lowercase and capitalised GAS keys; header row (index 0) skipped; empty trailing rows filtered by required_idx. Non-string cells coerced via _cell (bool->TRUE/FALSE)."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "100% (8/8 pytest bridge tests)", "frontend": "100% for FIX #2 (scroll+chips+validation+submit+card) and FIX #3 (reload persistence)"},
+  "seed_data_creation": "Demo emulator persists rows across iterations in Mongo test_database. This run added one TEST_ row ('TEST_PT UI Iter3' / QA Tester). Safe, no writes to real GAS.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Bridge lives at /api/bridge with target='demo' or a GAS URL; NEVER POST with target=REAL_GAS_URL (live sheet). Persistence key: AsyncStorage 'jobmail_gas_url' (localStorage on web). To verify #3, reload within SAME browser context (localStorage persists per-context); fresh contexts start empty and land on Setup. Save button in AddLamaranSheet sits slightly below the web-preview viewport due to rn-gh bottom-sheet math but is reachable via scroll and works on real Android.",
+  "rca_of_issue": "FIX #2 root cause: prior BottomSheetScrollView lacked flex:1 and dynamic sizing pushed the footer beyond the sheet, so chips and save button could not scroll into view. Fix pins sheet height (enableDynamicSizing=false, snapPoints=['92%']) and lets the inner scroll view flex to fill, with a fixed footer for the save button. Verified: chip-add-CV Umum & chip-add-Ijazah 1 reachable, save works, sheet closes, card appears. FIX #3 root cause: previously the app read the GAS URL only during Setup flow; on cold start the DataProvider did not consult AsyncStorage so users always saw Setup again. Fix adds reloadConnection() that reads AsyncStorage on mount and sets ready+connected+baseUrl, so app/index.tsx gate routes straight to /(tabs). Verified: page.reload() after demo connect lands on Home."
+}

@@ -147,6 +147,7 @@ const AddLamaranSheet = forwardRef<BottomSheetModal, Props>(({ options, onSubmit
     <BottomSheetModal
       ref={ref}
       snapPoints={snapPoints}
+      enableDynamicSizing={false}
       enablePanDownToClose
       keyboardBehavior="interactive"
       keyboardBlurBehavior="restore"
@@ -243,6 +244,7 @@ export default AddLamaranSheet;
 
 const styles = StyleSheet.create({
   sheetBg: { backgroundColor: colors.surface, borderTopLeftRadius: radius.lg, borderTopRightRadius: radius.lg },
+  scroll: { flex: 1 },
   handle: { backgroundColor: colors.border, width: 40 },
   header: {
     paddingHorizontal: spacing.lg,
