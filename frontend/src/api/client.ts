@@ -1,84 +1,61 @@
-// HTTP client that talks to a Google Apps Script Web App (or the bundled
-// GAS-compatible emulator backend). All comms are plain HTTP GET/POST — no OAuth.
-import { storage } from "@/src/utils/storage";
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
-export const GAS_URL_KEY = "jobmail_gas_url";
+export const GAS_URL_KEY = 'jobmail_gas_url';
 
-// All traffic is routed through our backend BRIDGE which forwards to the user's
-// real Google Apps Script Web App and normalises its response (also avoids CORS).
-export const BRIDGE_URL = `${process.env.EXPO_PUBLIC_BACKEND_URL}/api/bridge`;
-
-// Sentinel target that makes the bridge serve the built-in demo data.
-export const DEMO_URL = "demo";
-
-export type LogRow = {
-  row_index: number;
-  email: string;
-  subjek: string;
-  perusahaan: string;
-  posisi: string;
-  pesan: string;
-  berkas: string;
-  nama_pdf: string;
-  status: string;
-  aksi_kirim: string;
-};
-
-export type RefRow = { row_index: number; nama_file: string; id_file: string };
-
-export type InboxRow = {
-  row_index: number;
-  tanggal: string;
-  nama_perusahaan: string;
-  pengirim: string;
-  subjek: string;
-  kategori: string;
-  poin_kunci: string;
-  link_email: string;
-  status_tindak_lanjut: string;
-};
-
-export type AllData = {
-  ok: boolean;
-  Log_Pengiriman: LogRow[];
-  Referensi_Berkas: RefRow[];
-  Email_Masuk: InboxRow[];
-};
-
-export async function getSavedUrl(): Promise<string | null> {
-  return await storage.getItem(GAS_URL_KEY, "");
-}
-
-export async function saveUrl(url: string): Promise<boolean> {
-  return await storage.setItem(GAS_URL_KEY, url.trim());
-}
-
-function buildGetUrl(target: string): string {
-  return `${BRIDGE_URL}?action=getAllData&target=${encodeURIComponent(target)}`;
-}
-
-export async function fetchAllData(target: string): Promise<AllData> {
-  const res = await fetch(buildGetUrl(target), { method: "GET" });
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  const json = await res.json();
-  if (json.ok === false && (json.error || json.Log_Pengiriman == null)) {
-    throw new Error(json.error || "Gagal memuat data");
+export async function getGasUrl(): Promise<string> {
+  try {
+    const url = await AsyncStorage.getItem(GAS_URL_KEY);
+    return url || '';
+  } catch (e) {
+    return '';
   }
-  return {
-    ok: json.ok ?? true,
-    Log_Pengiriman: json.Log_Pengiriman ?? [],
-    Referensi_Berkas: json.Referensi_Berkas ?? [],
-    Email_Masuk: json.Email_Masuk ?? [],
-  };
 }
 
-export async function postAction(target: string, payload: Record<string, any>): Promise<any> {
-  const res = await fetch(BRIDGE_URL, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ target, ...payload }),
-    redirect: "follow",
+export async function setGasUrl(url: string): Promise<void> {
+  await AsyncStorage.setItem(GAS_URL_KEY, url.trim());
+}
+
+export async function fetchLamaran(sheetName: string = 'Applied') {
+  const baseUrl = await getGasUrl();
+  if (!baseUrl) {
+    throw new Error('URL Google Apps Script belum diatur di menu Setup.');
+  }
+
+  // DI-FIX: Menggunakan parameter `sheet` agar sesuai dengan Web App GAS
+  const response = await fetch(`${baseUrl}?action=getLamaran&sheet=${encodeURIComponent(sheetName)}`);
+  
+  if (!response.ok) {
+    throw new Error(`HTTP Error: ${response.status}`);
+  }
+
+  const data = await response.json();
+  if (data.status === 'error') {
+    throw new Error(data.message || 'Gagal mengambil data dari GAS');
+  }
+
+  return data;
+}
+
+export async function addLamaran(payload: any) {
+  const baseUrl = await getGasUrl();
+  if (!baseUrl) {
+    throw new Error('URL Google Apps Script belum diatur di menu Setup.');
+  }
+
+  const response = await fetch(baseUrl, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'text/plain;charset=utf-8',
+    },
+    body: JSON.stringify({
+      action: 'addLamaran',
+      ...payload,
+    }),
   });
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  return await res.json();
+
+  if (!response.ok) {
+    throw new Error(`HTTP Error: ${response.status}`);
+  }
+
+  return await response.json();
 }
