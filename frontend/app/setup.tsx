@@ -26,13 +26,16 @@ export default function Setup() {
 
   const connect = async (value: string) => {
     const v = value.trim();
-    if (!v) {
-      setError("URL Web App tidak boleh kosong");
-      return;
-    }
-    if (!/^https?:\/\//i.test(v)) {
-      setError("URL harus diawali http:// atau https://");
-      return;
+    const isDemo = v === "demo";
+    if (!isDemo) {
+      if (!v) {
+        setError("URL Web App tidak boleh kosong");
+        return;
+      }
+      if (!/^https?:\/\//i.test(v)) {
+        setError("URL harus diawali http:// atau https://");
+        return;
+      }
     }
     setError(null);
     setBusy(true);

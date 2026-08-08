@@ -1,0 +1,47 @@
+{
+  "summary": "Bug-fix verification for 'Tidak muncul apapun' (real GAS returns nothing). Backend BRIDGE (/api/bridge) verified end-to-end: 8/8 pytest cases pass. GET target=REAL_GAS_URL returns ok=true with exactly the expected NORMALISED shape - Log_Pengiriman=6 rows (header row 1 excluded, empty trailing rows filtered, first row_index=2), Referensi_Berkas=16 rows, Email_Masuk=1 row (Yafirateam). Rows are objects with the correct lowercase keys (email/perusahaan/posisi/status/aksi_kirim/nama_file/id_file/nama_perusahaan/kategori/subjek/etc). Companies observed match spec: 'PT Maju', 'PT Bahana Security Sistem', 'PT Surya Multi Cemerlang', 'PT Bitniaga Cipta Cemerlang', 'PT Buana Megah', 'PT Karunia Sejahterah Bersama'. Demo write actions (addLamaran, triggerKirim, syncReferensi, updateStatusTindakLanjut) all verified with Create->GET readback pattern - NO write was ever sent to the real GAS URL. Frontend UI (mobile viewport 390x844): Setup+REAL_GAS_URL renders 6 real cards, 2 green Terkirim badges (rows whose status contains 'Terkirim: 03/08/2026...'), 4 'Belum Dikirim' badges; Inbox tab shows the Yafirateam email with a category dot and 'Berhalangan Hadir' follow-up. Demo flow: 3 required-field errors on empty submit, add appends row, send-checkbox flips to Terkirim, inbox detail followup-send persists. No red screens, no API errors. React Native web deprecation warnings still present (shadow*, pointerEvents) - non-blocking and already logged in iteration_1.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "/api/bridge (GET)", "issue": "On upstream failure the endpoint returns HTTP 200 with {ok:false, error:...}. Frontend fetchAllData() handles this branch, but a 502/504 would be more idiomatic. Non-blocking."},
+      {"endpoint": "/api/bridge (POST)", "issue": "Bare `except Exception` on target=='' path may swallow schema errors. Consider logging body on 4xx paths."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Inbox (real GAS)", "issues": ["The 'tanggal' from real GAS is an ISO datetime '2026-07-30T09:01:01.000Z' and renders as-is in the date column - not user friendly for the '12 Jun 2026' demo format. Consider formatting ISO -> 'DD MMM YYYY' in inbox.tsx renderItem."]}
+    ],
+    "react_native_issues": [
+      {"component": "FAB shadow (app/(tabs)/index.tsx:203-206)", "issue": "React Native Web console warning: 'shadow*' style props are deprecated. Use 'boxShadow'. Reference: /app/frontend/app/(tabs)/index.tsx:203"},
+      {"component": "@gorhom/bottom-sheet backdrop", "issue": "React Native Web console warning: 'props.pointerEvents is deprecated. Use style.pointerEvents'. Upstream lib; informational."}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_bridge.py",
+    "/app/backend/tests/test_gas_emulator.py",
+    "/app/test_reports/pytest/pytest_bridge.xml"
+  ],
+  "action_items": [
+    "OPTIONAL UX: format InboxRow.tanggal (ISO -> 'DD MMM YYYY') in /app/frontend/app/(tabs)/inbox.tsx renderItem so real-GAS dates match the compact demo format.",
+    "OPTIONAL: replace shadowColor/shadowOffset/shadowOpacity/shadowRadius on FAB with boxShadow (keep elevation for Android) in /app/frontend/app/(tabs)/index.tsx.",
+    "No functional fixes required - bug 'Tidak muncul apapun' is RESOLVED by the bridge+normaliser."
+  ],
+  "critical_code_review_comments": [
+    "server.py logger is defined AFTER it is referenced inside bridge_get/bridge_post exception handlers (line 314 vs 255/281). Works because Python resolves globals lazily at call time, but move `logger = logging.getLogger(__name__)` above @api_router definitions for cleanliness.",
+    "normalize_getall correctly handles lowercase GAS keys (log_pengiriman/referensi_berkas/email_masuk) and header-row skipping; empty-row filter uses required_idx which matches the spec.",
+    "_is_demo() also treats target ending with '/api/gas' as demo - a nice back-compat shortcut.",
+    "client.ts POST includes {target, ...payload}; server strips 'target' before forwarding to real GAS - safe.",
+    "All frontend network calls go through /api/bridge - no direct GAS fetch, avoiding CORS as intended.",
+    "MongoDB _id stripped by clean() before every response.",
+    "All interactive elements have testID (input-gas-url, connect-button, demo-button, home-title, lamaran-card-*, status-badge-*, send-checkbox-*, fab-add, save-lamaran-button, input-*-error, tab-inbox, inbox-card-*, followup-input, followup-send, detail-back)."
+  ],
+  "updated_files": ["/app/backend/tests/test_bridge.py"],
+  "success_rate": {"backend": "100% (8/8 bridge tests + prior 9 emulator tests)", "frontend": "100% for real-GAS read + demo write flows"},
+  "seed_data_creation": "No new seed. Prior TEST_-prefixed demo rows persist in Mongo test_database from iteration_1; new run added 1 more (TEST_PT Demo). Demo home starts at 9 cards not 5 because of prior test residue - functional not a bug.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Bridge is at GET/POST /api/bridge with `target` (URL or 'demo' or ''=demo). Real GAS reads work; NEVER POST with target=REAL_GAS_URL as it writes to a live sheet. Demo emulator persists in Mongo 'test_database' -> demo card count grows across iterations (safe). Real GAS inbox 'tanggal' is ISO datetime and displays unformatted - consider a formatter. On web preview each browser context starts empty AsyncStorage so tests must begin at /setup.",
+  "rca_of_issue": "The user's real GAS Web App returns {log_pengiriman:[[header],[row]...], referensi_berkas:[...], email_masuk:[...]} - lowercase keys and array-of-arrays with a header row plus up to 1000 rows (many empty). The prior client parsed only the capitalised {Log_Pengiriman:[{obj}]} shape and, on web, could not fetch the GAS URL directly due to CORS. FIX (verified): server-side /api/bridge fetches the GAS URL (bypassing CORS), and normalize_getall() (a) picks either capitalised or lowercase keys via _get_tab, (b) skips index 0 (sheet header row), (c) maps positional cells to LOG_COLS/REF_COLS/INBOX_COLS building objects with row_index = arrayIndex+1, (d) drops rows where all required cells are blank. Result verified in production: 6 log rows, 16 ref rows, 1 inbox row (not 1000). Frontend receives the expected shape and renders correctly."
+}

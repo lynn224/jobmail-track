@@ -4,8 +4,12 @@ import { storage } from "@/src/utils/storage";
 
 export const GAS_URL_KEY = "jobmail_gas_url";
 
-// Default demo endpoint = our backend GAS emulator. Users replace it in Setup.
-export const DEMO_URL = `${process.env.EXPO_PUBLIC_BACKEND_URL}/api/gas`;
+// All traffic is routed through our backend BRIDGE which forwards to the user's
+// real Google Apps Script Web App and normalises its response (also avoids CORS).
+export const BRIDGE_URL = `${process.env.EXPO_PUBLIC_BACKEND_URL}/api/bridge`;
+
+// Sentinel target that makes the bridge serve the built-in demo data.
+export const DEMO_URL = "demo";
 
 export type LogRow = {
   row_index: number;
@@ -49,15 +53,17 @@ export async function saveUrl(url: string): Promise<boolean> {
   return await storage.setItem(GAS_URL_KEY, url.trim());
 }
 
-function buildGetUrl(base: string): string {
-  const sep = base.includes("?") ? "&" : "?";
-  return `${base}${sep}action=getAllData`;
+function buildGetUrl(target: string): string {
+  return `${BRIDGE_URL}?action=getAllData&target=${encodeURIComponent(target)}`;
 }
 
-export async function fetchAllData(base: string): Promise<AllData> {
-  const res = await fetch(buildGetUrl(base), { method: "GET" });
+export async function fetchAllData(target: string): Promise<AllData> {
+  const res = await fetch(buildGetUrl(target), { method: "GET" });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   const json = await res.json();
+  if (json.ok === false && (json.error || json.Log_Pengiriman == null)) {
+    throw new Error(json.error || "Gagal memuat data");
+  }
   return {
     ok: json.ok ?? true,
     Log_Pengiriman: json.Log_Pengiriman ?? [],
@@ -66,11 +72,11 @@ export async function fetchAllData(base: string): Promise<AllData> {
   };
 }
 
-export async function postAction(base: string, payload: Record<string, any>): Promise<any> {
-  const res = await fetch(base, {
+export async function postAction(target: string, payload: Record<string, any>): Promise<any> {
+  const res = await fetch(BRIDGE_URL, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
+    body: JSON.stringify({ target, ...payload }),
     redirect: "follow",
   });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);

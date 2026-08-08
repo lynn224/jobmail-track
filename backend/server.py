@@ -3,7 +3,9 @@ from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 import os
+import asyncio
 import logging
+import requests
 from pathlib import Path
 from typing import Optional
 
@@ -19,10 +21,21 @@ app = FastAPI()
 api_router = APIRouter(prefix="/api")
 
 # ---------------------------------------------------------------------------
-# Demo seed data (mirrors the structure of the user's Google Sheets tabs).
-# This backend emulates the exact HTTP contract of the user's Google Apps
-# Script Web App so the app works end-to-end. Swap the URL in the app's Setup
-# screen to point at the real GAS Web App at any time — the contract is identical.
+# JobMail Tracker backend.
+#
+# Two responsibilities:
+#   1. A GAS-compatible DEMO emulator (MongoDB seeded) for trying the app.
+#   2. A BRIDGE/PROXY that forwards requests to the user's real Google Apps
+#      Script Web App and NORMALISES its response into the shape the app
+#      expects. This also sidesteps browser CORS (server-to-server fetch) so
+#      the app works both in the web preview and on native Android.
+#
+# Real GAS getAllData shape (what we normalise FROM):
+#   { "log_pengiriman": [[header...], [rowcells...], ...],
+#     "referensi_berkas": [[header],[..]],
+#     "email_masuk": [[header],[..]] }
+# Rows are arrays of cell values including a header row at index 0 and possibly
+# many trailing empty rows. row_index = arrayIndex + 1 (sheet row number).
 # ---------------------------------------------------------------------------
 
 REFERENSI_SEED = [
@@ -80,15 +93,14 @@ INBOX_SEED = [
 
 async def ensure_seed():
     if await db.referensi.count_documents({}) == 0:
-        docs = [{"row_index": i + 2, "nama_file": name, "id_file": f"1AbCdEf_demo_{i:03d}"}
-                for i, name in enumerate(REFERENSI_SEED)]
-        await db.referensi.insert_many(docs)
+        await db.referensi.insert_many(
+            [{"row_index": i + 2, "nama_file": n, "id_file": f"1AbCdEf_demo_{i:03d}"}
+             for i, n in enumerate(REFERENSI_SEED)]
+        )
     if await db.log.count_documents({}) == 0:
-        docs = [{"row_index": i + 2, **row} for i, row in enumerate(LOG_SEED)]
-        await db.log.insert_many(docs)
+        await db.log.insert_many([{"row_index": i + 2, **r} for i, r in enumerate(LOG_SEED)])
     if await db.inbox.count_documents({}) == 0:
-        docs = [{"row_index": i + 2, **row} for i, row in enumerate(INBOX_SEED)]
-        await db.inbox.insert_many(docs)
+        await db.inbox.insert_many([{"row_index": i + 2, **r} for i, r in enumerate(INBOX_SEED)])
 
 
 def clean(doc: dict) -> dict:
@@ -97,46 +109,86 @@ def clean(doc: dict) -> dict:
 
 
 async def build_all_data() -> dict:
-    log = [clean(d) for d in await db.log.find().sort("row_index", 1).to_list(1000)]
-    ref = [clean(d) for d in await db.referensi.find().sort("row_index", 1).to_list(1000)]
-    inbox = [clean(d) for d in await db.inbox.find().sort("row_index", 1).to_list(1000)]
-    return {
-        "ok": True,
-        "Log_Pengiriman": log,
-        "Referensi_Berkas": ref,
-        "Email_Masuk": inbox,
-    }
+    log = [clean(d) for d in await db.log.find().sort("row_index", 1).to_list(2000)]
+    ref = [clean(d) for d in await db.referensi.find().sort("row_index", 1).to_list(2000)]
+    inbox = [clean(d) for d in await db.inbox.find().sort("row_index", 1).to_list(2000)]
+    return {"ok": True, "Log_Pengiriman": log, "Referensi_Berkas": ref, "Email_Masuk": inbox}
 
 
 async def next_row_index(collection) -> int:
     last = await collection.find().sort("row_index", -1).limit(1).to_list(1)
-    if not last:
-        return 2
-    return int(last[0]["row_index"]) + 1
+    return int(last[0]["row_index"]) + 1 if last else 2
 
 
-@api_router.get("/")
-async def root():
-    return {"message": "JobMail Tracker API (GAS-compatible emulator)"}
+# ---------------------------------------------------------------------------
+# Normalisation of a real GAS getAllData payload -> app shape.
+# ---------------------------------------------------------------------------
+
+LOG_COLS = ["email", "subjek", "perusahaan", "posisi", "pesan", "berkas", "nama_pdf", "status", "aksi_kirim"]
+REF_COLS = ["nama_file", "id_file"]
+INBOX_COLS = ["tanggal", "nama_perusahaan", "pengirim", "subjek", "kategori", "poin_kunci", "link_email", "status_tindak_lanjut"]
 
 
-# --- GAS Web App emulator: GET (read) ---------------------------------------
-@api_router.get("/gas")
-async def gas_get(action: Optional[str] = "getAllData"):
+def _cell(x):
+    if isinstance(x, bool):
+        return "TRUE" if x else "FALSE"
+    if x is None:
+        return ""
+    return x if isinstance(x, str) else str(x)
+
+
+def _rows_to_objects(rows, cols, required_idx):
+    out = []
+    if not isinstance(rows, list):
+        return out
+    for i, r in enumerate(rows):
+        # Already an object (our demo emulator) — pass through untouched.
+        if isinstance(r, dict):
+            out.append(r)
+            continue
+        if not isinstance(r, list):
+            continue
+        # index 0 is the sheet header row -> skip.
+        if i == 0:
+            continue
+        vals = [_cell(x) for x in r]
+        obj = {"row_index": i + 1}
+        for idx, name in enumerate(cols):
+            obj[name] = vals[idx].strip() if (idx < len(vals) and isinstance(vals[idx], str)) else (vals[idx] if idx < len(vals) else "")
+        # Skip empty/trailing rows: all required cells blank.
+        if all(not str(obj.get(cols[j], "")).strip() for j in required_idx):
+            continue
+        out.append(obj)
+    return out
+
+
+def _get_tab(raw: dict, *keys):
+    for k in keys:
+        if k in raw:
+            return raw[k]
+    return []
+
+
+def normalize_getall(raw) -> dict:
+    if not isinstance(raw, dict):
+        return {"ok": False, "error": "Format respons GAS tidak dikenali", "Log_Pengiriman": [], "Referensi_Berkas": [], "Email_Masuk": []}
+    log = _get_tab(raw, "Log_Pengiriman", "log_pengiriman")
+    ref = _get_tab(raw, "Referensi_Berkas", "referensi_berkas")
+    inbox = _get_tab(raw, "Email_Masuk", "email_masuk")
+    return {
+        "ok": True,
+        "Log_Pengiriman": _rows_to_objects(log, LOG_COLS, [0, 2, 3]),
+        "Referensi_Berkas": _rows_to_objects(ref, REF_COLS, [0]),
+        "Email_Masuk": _rows_to_objects(inbox, INBOX_COLS, [1, 3]),
+    }
+
+
+# ---------------------------------------------------------------------------
+# Demo emulator write actions (used when target is empty / "demo").
+# ---------------------------------------------------------------------------
+
+async def emulator_action(body: dict) -> dict:
     await ensure_seed()
-    if action == "getAllData":
-        return await build_all_data()
-    return {"ok": False, "error": f"Unknown action '{action}'"}
-
-
-# --- GAS Web App emulator: POST (write / trigger) ---------------------------
-@api_router.post("/gas")
-async def gas_post(request: Request):
-    await ensure_seed()
-    try:
-        body = await request.json()
-    except Exception:
-        body = {}
     action = body.get("action")
 
     if action == "addLamaran":
@@ -158,30 +210,94 @@ async def gas_post(request: Request):
 
     if action == "triggerKirim":
         ri = int(body.get("row_index"))
-        await db.log.update_one(
-            {"row_index": ri},
-            {"$set": {"aksi_kirim": "TRUE", "status": "Terkirim"}},
-        )
+        await db.log.update_one({"row_index": ri}, {"$set": {"aksi_kirim": "TRUE", "status": "Terkirim"}})
         return {"ok": True, "row_index": ri, "status": "Terkirim"}
 
     if action == "syncReferensi":
-        # Emulates GAS ambilSemuaIdDariFolder: repopulate reference list from Drive.
         await db.referensi.delete_many({})
-        docs = [{"row_index": i + 2, "nama_file": name, "id_file": f"1AbCdEf_demo_{i:03d}"}
-                for i, name in enumerate(REFERENSI_SEED)]
-        await db.referensi.insert_many(docs)
-        return {"ok": True, "count": len(docs), "message": "Referensi tersinkron"}
+        await db.referensi.insert_many(
+            [{"row_index": i + 2, "nama_file": n, "id_file": f"1AbCdEf_demo_{i:03d}"}
+             for i, n in enumerate(REFERENSI_SEED)]
+        )
+        return {"ok": True, "count": len(REFERENSI_SEED), "message": "Referensi tersinkron"}
 
     if action == "updateStatusTindakLanjut":
         ri = int(body.get("row_index"))
-        text = body.get("status_text", "")
-        await db.inbox.update_one(
-            {"row_index": ri},
-            {"$set": {"status_tindak_lanjut": text}},
-        )
+        await db.inbox.update_one({"row_index": ri}, {"$set": {"status_tindak_lanjut": body.get("status_text", "")}})
         return {"ok": True, "row_index": ri}
 
     return {"ok": False, "error": f"Unknown action '{action}'"}
+
+
+def _is_demo(target: Optional[str]) -> bool:
+    return (not target) or target == "demo" or target.rstrip("/").endswith("/api/gas")
+
+
+@api_router.get("/")
+async def root():
+    return {"message": "JobMail Tracker API (bridge + GAS emulator)"}
+
+
+# --- BRIDGE: read (GET) -----------------------------------------------------
+@api_router.get("/bridge")
+async def bridge_get(action: str = "getAllData", target: str = ""):
+    if _is_demo(target):
+        await ensure_seed()
+        return await build_all_data()
+    try:
+        def _fetch():
+            sep = "&" if "?" in target else "?"
+            return requests.get(f"{target}{sep}action={action}", timeout=30, allow_redirects=True)
+        resp = await asyncio.to_thread(_fetch)
+        raw = resp.json()
+        return normalize_getall(raw)
+    except Exception as e:
+        logger.exception("bridge_get failed")
+        return {"ok": False, "error": f"Gagal menghubungi GAS: {e}", "Log_Pengiriman": [], "Referensi_Berkas": [], "Email_Masuk": []}
+
+
+# --- BRIDGE: write / trigger (POST) -----------------------------------------
+@api_router.post("/bridge")
+async def bridge_post(request: Request):
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    target = body.get("target", "")
+    payload = {k: v for k, v in body.items() if k != "target"}
+
+    if _is_demo(target):
+        return await emulator_action(payload)
+
+    try:
+        def _post():
+            return requests.post(target, json=payload, timeout=30, allow_redirects=True)
+        resp = await asyncio.to_thread(_post)
+        try:
+            return resp.json()
+        except Exception:
+            return {"ok": True, "raw": resp.text[:500]}
+    except Exception as e:
+        logger.exception("bridge_post failed")
+        return {"ok": False, "error": f"Gagal menghubungi GAS: {e}"}
+
+
+# --- Legacy GAS emulator endpoints (kept for direct demo access) ------------
+@api_router.get("/gas")
+async def gas_get(action: Optional[str] = "getAllData"):
+    await ensure_seed()
+    if action == "getAllData":
+        return await build_all_data()
+    return {"ok": False, "error": f"Unknown action '{action}'"}
+
+
+@api_router.post("/gas")
+async def gas_post(request: Request):
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    return await emulator_action(body)
 
 
 app.include_router(api_router)
@@ -194,10 +310,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
 
